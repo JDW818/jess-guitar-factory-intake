@@ -29,6 +29,8 @@ export async function POST(request: Request) {
     return Response.json({ scope, model: MODEL });
   } catch (err) {
     console.error(err);
-    return Response.json({ error: "Scoping failed. Try again in a moment." }, { status: 500 });
+    // Surface the provider's reason (e.g. auth, credits, unknown model) so failures are diagnosable.
+    const detail = err instanceof Error ? `${err.name}: ${err.message}`.slice(0, 300) : undefined;
+    return Response.json({ error: "Scoping failed. Try again in a moment.", detail }, { status: 500 });
   }
 }

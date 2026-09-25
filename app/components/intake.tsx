@@ -31,7 +31,7 @@ export function Intake({ jobs, onBook }: { jobs: Job[]; onBook: (job: Job) => vo
         body: JSON.stringify({ request: text }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
+      if (!res.ok) throw new Error([data.error ?? "Something went wrong.", data.detail].filter(Boolean).join(" "));
       setScope(data.scope);
       setModel(data.model);
     } catch (e) {
