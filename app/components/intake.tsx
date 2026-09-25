@@ -4,7 +4,7 @@ import { useState } from "react";
 import { fmt, fromToday } from "@/lib/dates";
 import { priceScope, staffingOptions, utilLevel, whyRecommended, type StaffingOption } from "@/lib/engine";
 import type { Scope } from "@/lib/scope-schema";
-import { SPECIALISTS, TIERS, type Builder, type Job } from "@/lib/shop";
+import { SPECIALISTS, TIERS, type Job } from "@/lib/shop";
 import { Card, TierBadge, UTIL_TEXT, marginColor, pct, usd } from "./ui";
 
 const EXAMPLES: [string, string][] = [
@@ -13,7 +13,7 @@ const EXAMPLES: [string, string][] = [
   ["Metal rush job", "Grimhold again: baritone 7-string, Brazilian rosewood board, abalone inlays, active pickups. Tour starts in 5 weeks."],
 ];
 
-export function Intake({ jobs, roster, onBook }: { jobs: Job[]; roster: Builder[]; onBook: (job: Job) => void }) {
+export function Intake({ jobs, onBook }: { jobs: Job[]; onBook: (job: Job) => void }) {
   const [text, setText] = useState("");
   const [scope, setScope] = useState<Scope | null>(null);
   const [model, setModel] = useState("");
@@ -93,14 +93,14 @@ export function Intake({ jobs, roster, onBook }: { jobs: Job[]; roster: Builder[
       </Card>
 
       {error && <p className="rounded-xl bg-red-100 p-4 text-red-900">{error}</p>}
-      {scope && <ScopeResult scope={scope} jobs={jobs} roster={roster} model={model} onBook={book} />}
+      {scope && <ScopeResult scope={scope} jobs={jobs} model={model} onBook={book} />}
     </div>
   );
 }
 
-function ScopeResult({ scope, jobs, roster, model, onBook }: { scope: Scope; jobs: Job[]; roster: Builder[]; model: string; onBook: (o: StaffingOption) => void }) {
+function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]; model: string; onBook: (o: StaffingOption) => void }) {
   const p = priceScope(scope);
-  const options = staffingOptions(scope, jobs, roster);
+  const options = staffingOptions(scope, jobs).slice(0, 3);
   const best = options[0];
 
   return (
@@ -111,7 +111,7 @@ function ScopeResult({ scope, jobs, roster, model, onBook }: { scope: Scope; job
         </div>
       )}
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid gap-5 xl:grid-cols-2">
         <Card title="Scope">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-semibold">{scope.title}</h3>
@@ -151,7 +151,7 @@ function ScopeResult({ scope, jobs, roster, model, onBook }: { scope: Scope; job
         </Card>
       </div>
 
-      <Card title="Staffing recommendations" action={<span className="text-xs text-[var(--muted)]">earliest start within each builder&apos;s utilization target</span>}>
+      <Card title="Who should build it" action={<span className="text-xs text-[var(--muted)]">top 3 · skill fit, capacity vs target, margin</span>}>
         <div className="space-y-3">
           {options.map((o) => (
             <div key={o.builder.id} className={`rounded-xl border p-4 ${o === best ? "border-[var(--accent)] bg-[var(--background)]" : "border-[var(--line)]"}`}>

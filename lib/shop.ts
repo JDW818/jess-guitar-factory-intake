@@ -42,14 +42,12 @@ export const SPECIALISTS: Record<SpecialistKey, { label: string; price: number; 
 export const MATERIALS_MARKUP = 0.3;
 export const RUSH_SURCHARGE = 0.25;
 export const PLANNING_WEEKS = 4; // near-term utilization horizon
-export const TIMELINE_WEEKS = 12; // schedule + capacity horizon
-export const UTIL_TOLERANCE = 0.05; // slack over target before we flag it
+export const UTIL_TOLERANCE = 0.05; // slack over target before we call it over
 export const CONCURRENCY_SHARE = 0.5; // new jobs are planned at ~half a builder's week, so work can overlap
 
 // utilTarget: share of weekly hours that should be billable build work.
 // Masters run lower: they carry design reviews, mentoring and QA sign-off.
 export type Builder = { id: string; name: string; tier: Tier; skills: Skill[]; weeklyHours: number; utilTarget: number };
-export type Targets = Record<string, number>; // builder id → utilization target overrides
 
 export const DEFAULT_TARGETS: Record<Tier, number> = { Junior: 0.85, Senior: 0.8, Master: 0.7 };
 
@@ -85,8 +83,7 @@ export type Job = {
 };
 
 // Seed workload is built relative to today so the demo always looks current.
-// It's deliberately imperfect: Maya is overloaded, Priya is over target and
-// holding a job outside her skills, Tomás and Jo are on the bench.
+// Maya is overbooked and the Juniors have room, so staffing calls have teeth.
 export function seedJobs(): Job[] {
   const job = (
     id: string, title: string, customer: string, tier: Tier, skills: Skill[], assigneeId: string,
@@ -109,7 +106,7 @@ export function seedJobs(): Job[] {
     job("j3", "Koa 7-string, bespoke body", "N. Farah", "Master", ["exotic tonewoods", "extended range"], "dev", 110, 70, 1600, "In build", [-35, 10, 14]),
     job("j4", "LH semi-hollow, custom burst", "A. Kim", "Senior", ["left-handed", "hollow/semi-hollow", "custom finish"], "priya", 80, 20, 700, "In build", [-14, 21, 28]),
     job("j5", "LH Tele w/ Bigsby", "Harbor Church", "Senior", ["left-handed", "electronics"], "priya", 60, 0, 500, "Scheduled", [7, 42, 49]),
-    job("j10", "Baritone 7, fanned frets", "Grimhold", "Senior", ["extended range"], "priya", 70, 0, 650, "Scheduled", [0, 35, 42]),
+    job("j10", "Baritone 7, fanned frets", "Grimhold", "Senior", ["extended range"], "tomas", 70, 0, 650, "Scheduled", [0, 35, 42]),
     job("j6", "Baritone 6, EMG swap", "Grimhold", "Senior", ["extended range", "electronics"], "tomas", 55, 45, 450, "Setup & QA", [-28, 5, 7]),
     job("j7", "Strat-style, sunburst", "Austin Music Academy", "Junior", ["solid-body"], "sam", 35, 10, 300, "In build", [-7, 10, 14]),
     job("j8", "Strat-style, olympic white", "Austin Music Academy", "Junior", ["solid-body"], "sam", 35, 0, 300, "Scheduled", [10, 28, 35]),
