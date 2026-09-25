@@ -1,4 +1,4 @@
-# Jess's Guitar Factory: shop operations console
+# Jess' Guitar Factory: shop operations console
 
 A custom guitar shop run like a professional services org. Internal tool for the shop lead:
 **intake → scope → price → staff against real capacity → manage the board.**

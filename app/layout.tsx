@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Jess's Guitar Factory",
+  title: "Jess' Guitar Factory",
   description: "Scoping, pricing and staffing console for a custom guitar shop.",
 };
 

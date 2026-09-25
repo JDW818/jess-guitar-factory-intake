@@ -1,6 +1,8 @@
 // The shop's operating model: rate card, roster, specialists, seed workload.
 // Everything deterministic (pricing, staffing, margin) reads from here.
 
+import { fromToday } from "./dates";
+
 export const TIER_ORDER = ["Junior", "Senior", "Master"] as const;
 export type Tier = (typeof TIER_ORDER)[number];
 
@@ -39,17 +41,25 @@ export const SPECIALISTS: Record<SpecialistKey, { label: string; price: number; 
 
 export const MATERIALS_MARKUP = 0.3;
 export const RUSH_SURCHARGE = 0.25;
-export const BUILD_ALLOCATION = 0.8; // share of a builder's week that goes to build work
+export const PLANNING_WEEKS = 4; // near-term utilization horizon
+export const TIMELINE_WEEKS = 12; // schedule + capacity horizon
+export const UTIL_TOLERANCE = 0.05; // slack over target before we flag it
+export const CONCURRENCY_SHARE = 0.5; // new jobs are planned at ~half a builder's week, so work can overlap
 
-export type Builder = { id: string; name: string; tier: Tier; skills: Skill[]; weeklyHours: number };
+// utilTarget: share of weekly hours that should be billable build work.
+// Masters run lower: they carry design reviews, mentoring and QA sign-off.
+export type Builder = { id: string; name: string; tier: Tier; skills: Skill[]; weeklyHours: number; utilTarget: number };
+export type Targets = Record<string, number>; // builder id → utilization target overrides
+
+export const DEFAULT_TARGETS: Record<Tier, number> = { Junior: 0.85, Senior: 0.8, Master: 0.7 };
 
 export const ROSTER: Builder[] = [
-  { id: "maya", name: "Maya Okafor", tier: "Master", skills: ["archtop carving", "hollow/semi-hollow", "inlay", "vintage recreation", "exotic tonewoods"], weeklyHours: 40 },
-  { id: "dev", name: "Dev Ramanathan", tier: "Master", skills: ["exotic tonewoods", "extended range", "custom finish", "solid-body", "inlay"], weeklyHours: 40 },
-  { id: "priya", name: "Priya Shah", tier: "Senior", skills: ["left-handed", "hollow/semi-hollow", "custom finish", "electronics"], weeklyHours: 40 },
-  { id: "tomas", name: "Tomás Reyes", tier: "Senior", skills: ["extended range", "solid-body", "electronics", "left-handed"], weeklyHours: 40 },
-  { id: "sam", name: "Sam Lee", tier: "Junior", skills: ["solid-body", "setup"], weeklyHours: 40 },
-  { id: "jo", name: "Jo Martin", tier: "Junior", skills: ["solid-body", "electronics", "setup"], weeklyHours: 32 },
+  { id: "maya", name: "Maya Okafor", tier: "Master", skills: ["archtop carving", "hollow/semi-hollow", "inlay", "vintage recreation", "exotic tonewoods"], weeklyHours: 40, utilTarget: DEFAULT_TARGETS.Master },
+  { id: "dev", name: "Dev Ramanathan", tier: "Master", skills: ["exotic tonewoods", "extended range", "custom finish", "inlay", "hollow/semi-hollow"], weeklyHours: 40, utilTarget: DEFAULT_TARGETS.Master },
+  { id: "priya", name: "Priya Shah", tier: "Senior", skills: ["left-handed", "hollow/semi-hollow", "custom finish", "electronics"], weeklyHours: 40, utilTarget: DEFAULT_TARGETS.Senior },
+  { id: "tomas", name: "Tomás Reyes", tier: "Senior", skills: ["extended range", "solid-body", "electronics", "left-handed"], weeklyHours: 40, utilTarget: DEFAULT_TARGETS.Senior },
+  { id: "sam", name: "Sam Lee", tier: "Junior", skills: ["solid-body", "setup"], weeklyHours: 40, utilTarget: DEFAULT_TARGETS.Junior },
+  { id: "jo", name: "Jo Martin", tier: "Junior", skills: ["solid-body", "electronics", "setup"], weeklyHours: 32, utilTarget: DEFAULT_TARGETS.Junior },
 ];
 
 export const JOB_STATUSES = ["Scheduled", "In build", "Setup & QA", "Delivered"] as const;
@@ -60,6 +70,7 @@ export type Job = {
   title: string;
   customer: string;
   tier: Tier; // tier the work requires; drives the price
+  skills: Skill[]; // skills the work requires
   assigneeId: string; // who does it; drives the cost
   hours: number;
   hoursDone: number;
@@ -68,26 +79,40 @@ export type Job = {
   specialistsCost: number;
   needsReview: boolean;
   status: JobStatus;
+  start: string; // planned start (YYYY-MM-DD)
+  end: string; // planned finish, inclusive
+  due: string | null; // committed delivery date
 };
 
-function seed(id: string, title: string, customer: string, tier: Tier, assigneeId: string, hours: number, hoursDone: number, materials: number, status: JobStatus): Job {
-  return {
-    id, title, customer, tier, assigneeId, hours, hoursDone, status,
+// Seed workload is built relative to today so the demo always looks current.
+// It's deliberately imperfect: Maya is overloaded, Priya is over target and
+// holding a job outside her skills, Tomás and Jo are on the bench.
+export function seedJobs(): Job[] {
+  const job = (
+    id: string, title: string, customer: string, tier: Tier, skills: Skill[], assigneeId: string,
+    hours: number, hoursDone: number, materials: number, status: JobStatus,
+    [start, end, due]: [number, number, number],
+  ): Job => ({
+    id, title, customer, tier, skills, assigneeId, hours, hoursDone, status,
     price: Math.round(hours * TIERS[tier].billRate + materials * (1 + MATERIALS_MARKUP)),
     materialsCost: materials,
     specialistsCost: 0,
     needsReview: false,
-  };
-}
+    start: fromToday(start),
+    end: fromToday(end),
+    due: fromToday(due),
+  });
 
-export const SEED_JOBS: Job[] = [
-  seed("j1", "1950s L-5 archtop recreation", "R. Castillo", "Master", "maya", 160, 40, 1800, "In build"),
-  seed("j2", "Quilted maple jazz box w/ block inlays", "Blue Note Trio", "Master", "maya", 120, 0, 1400, "Scheduled"),
-  seed("j3", "Koa 7-string, bespoke body", "N. Farah", "Master", "dev", 110, 70, 1600, "In build"),
-  seed("j4", "LH semi-hollow, custom burst", "A. Kim", "Senior", "priya", 80, 20, 700, "In build"),
-  seed("j5", "LH Tele w/ Bigsby", "Harbor Church", "Senior", "priya", 60, 0, 500, "Scheduled"),
-  seed("j6", "Baritone 6, EMG swap", "Grimhold", "Senior", "tomas", 55, 45, 450, "Setup & QA"),
-  seed("j7", "Strat-style, sunburst", "Austin Music Academy", "Junior", "sam", 35, 10, 300, "In build"),
-  seed("j8", "Strat-style, olympic white", "Austin Music Academy", "Junior", "sam", 35, 0, 300, "Scheduled"),
-  seed("j9", "Tele kit assembly", "D. Wu", "Junior", "jo", 25, 20, 250, "Setup & QA"),
-];
+  return [
+    job("j1", "1950s L-5 archtop recreation", "R. Castillo", "Master", ["archtop carving", "vintage recreation"], "maya", 160, 40, 1800, "In build", [-21, 35, 28]),
+    job("j2", "Quilted maple jazz box, block inlays", "Blue Note Trio", "Master", ["hollow/semi-hollow", "inlay", "exotic tonewoods"], "maya", 130, 0, 1400, "Scheduled", [14, 63, 77]),
+    job("j3", "Koa 7-string, bespoke body", "N. Farah", "Master", ["exotic tonewoods", "extended range"], "dev", 110, 70, 1600, "In build", [-35, 10, 14]),
+    job("j4", "LH semi-hollow, custom burst", "A. Kim", "Senior", ["left-handed", "hollow/semi-hollow", "custom finish"], "priya", 80, 20, 700, "In build", [-14, 21, 28]),
+    job("j5", "LH Tele w/ Bigsby", "Harbor Church", "Senior", ["left-handed", "electronics"], "priya", 60, 0, 500, "Scheduled", [7, 42, 49]),
+    job("j10", "Baritone 7, fanned frets", "Grimhold", "Senior", ["extended range"], "priya", 70, 0, 650, "Scheduled", [0, 35, 42]),
+    job("j6", "Baritone 6, EMG swap", "Grimhold", "Senior", ["extended range", "electronics"], "tomas", 55, 45, 450, "Setup & QA", [-28, 5, 7]),
+    job("j7", "Strat-style, sunburst", "Austin Music Academy", "Junior", ["solid-body"], "sam", 35, 10, 300, "In build", [-7, 10, 14]),
+    job("j8", "Strat-style, olympic white", "Austin Music Academy", "Junior", ["solid-body"], "sam", 35, 0, 300, "Scheduled", [10, 28, 35]),
+    job("j9", "Tele kit assembly", "D. Wu", "Junior", ["solid-body", "setup"], "jo", 25, 20, 250, "Setup & QA", [-21, 3, 5]),
+  ];
+}

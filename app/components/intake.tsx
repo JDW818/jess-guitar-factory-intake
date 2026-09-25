@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { priceScope, staffingOptions, type StaffingOption } from "@/lib/engine";
+import { fmt, fromToday } from "@/lib/dates";
+import { priceScope, staffingOptions, utilLevel, whyRecommended, type StaffingOption } from "@/lib/engine";
 import type { Scope } from "@/lib/scope-schema";
-import { SPECIALISTS, TIERS, type Job } from "@/lib/shop";
-import { Card, LoadBar, TierBadge, marginColor, pct, usd } from "./ui";
+import { SPECIALISTS, TIERS, type Builder, type Job } from "@/lib/shop";
+import { Card, TierBadge, UTIL_TEXT, marginColor, pct, usd } from "./ui";
 
 const EXAMPLES: [string, string][] = [
   ["Jazz trio, LH", "From Blue Line Jazz Trio: we need a left-handed semi-hollow for our guitarist, flame maple top, humbuckers, amber burst. Mid-tier budget. Gigging by early November."],
@@ -12,7 +13,7 @@ const EXAMPLES: [string, string][] = [
   ["Metal rush job", "Grimhold again: baritone 7-string, Brazilian rosewood board, abalone inlays, active pickups. Tour starts in 5 weeks."],
 ];
 
-export function Intake({ jobs, onBook }: { jobs: Job[]; onBook: (job: Job) => void }) {
+export function Intake({ jobs, roster, onBook }: { jobs: Job[]; roster: Builder[]; onBook: (job: Job) => void }) {
   const [text, setText] = useState("");
   const [scope, setScope] = useState<Scope | null>(null);
   const [model, setModel] = useState("");
@@ -48,6 +49,7 @@ export function Intake({ jobs, onBook }: { jobs: Job[]; onBook: (job: Job) => vo
       title: scope.title,
       customer: scope.customer ?? "New customer",
       tier: scope.requiredTier,
+      skills: scope.skills,
       assigneeId: opt.builder.id,
       hours: p.hours,
       hoursDone: 0,
@@ -56,6 +58,9 @@ export function Intake({ jobs, onBook }: { jobs: Job[]; onBook: (job: Job) => vo
       specialistsCost: p.specialistsCost,
       needsReview: scope.needsReview,
       status: "Scheduled",
+      start: opt.start,
+      end: opt.end,
+      due: scope.deadlineWeeks != null ? fromToday(scope.deadlineWeeks * 7) : null,
     });
     setScope(null);
     setText("");
@@ -88,14 +93,14 @@ export function Intake({ jobs, onBook }: { jobs: Job[]; onBook: (job: Job) => vo
       </Card>
 
       {error && <p className="rounded-xl bg-red-100 p-4 text-red-900">{error}</p>}
-      {scope && <ScopeResult scope={scope} jobs={jobs} model={model} onBook={book} />}
+      {scope && <ScopeResult scope={scope} jobs={jobs} roster={roster} model={model} onBook={book} />}
     </div>
   );
 }
 
-function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]; model: string; onBook: (o: StaffingOption) => void }) {
+function ScopeResult({ scope, jobs, roster, model, onBook }: { scope: Scope; jobs: Job[]; roster: Builder[]; model: string; onBook: (o: StaffingOption) => void }) {
   const p = priceScope(scope);
-  const options = staffingOptions(scope, jobs);
+  const options = staffingOptions(scope, jobs, roster);
   const best = options[0];
 
   return (
@@ -114,7 +119,7 @@ function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]
           </div>
           <p className="mt-1 text-sm text-[var(--muted)]">
             {scope.customer ?? "New customer"} · {scope.complexity} · ≈ {TIERS[scope.requiredTier].services}
-            {scope.deadlineWeeks != null && ` · due in ${scope.deadlineWeeks} wks`}
+            {scope.deadlineWeeks != null && ` · due ${fmt(fromToday(scope.deadlineWeeks * 7))}`}
           </p>
           <p className="mt-3 text-sm leading-relaxed">{scope.tierRationale}</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -146,35 +151,33 @@ function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]
         </Card>
       </div>
 
-      <Card title="Staffing options" action={<span className="text-xs text-[var(--muted)]">ranked on skill fit, availability, deadline, margin</span>}>
+      <Card title="Staffing recommendations" action={<span className="text-xs text-[var(--muted)]">earliest start within each builder&apos;s utilization target</span>}>
         <div className="space-y-3">
           {options.map((o) => (
             <div key={o.builder.id} className={`rounded-xl border p-4 ${o === best ? "border-[var(--accent)] bg-[var(--background)]" : "border-[var(--line)]"}`}>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <div className="min-w-40">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                <div className="min-w-44">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">{o.builder.name}</span>
                     <TierBadge tier={o.builder.tier} />
+                    {o === best && <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Best fit</span>}
                   </div>
-                  <p className="mt-0.5 text-xs text-[var(--muted)]">
-                    skills {o.matched.length}/{scope.skills.length}
-                    {o === best && " · recommended"}
-                  </p>
+                  <p className="mt-0.5 text-xs text-[var(--muted)]">{whyRecommended(o, scope)}</p>
                 </div>
-                <Stat k="Free in" v={`${o.load.backlogWeeks.toFixed(1)} wks`} />
-                <Stat k="Delivers" v={`wk ${o.deliverWeeks}`} warn={o.rush} />
+                <Stat k="Dates" v={`${fmt(o.start)} – ${fmt(o.end)}`} warn={o.rush} />
+                <Stat k="Peak util" v={`${pct(o.peak)} / ${pct(o.builder.utilTarget)}`} cls={UTIL_TEXT[utilLevel(o.peak, o.builder.utilTarget)]} />
                 <Stat k="Price" v={usd(o.price)} />
                 <Stat k="Margin" v={pct(o.margin)} cls={marginColor(o.margin)} />
                 <button onClick={() => onBook(o)} className="ml-auto rounded-lg border border-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white">
                   Assign & book
                 </button>
               </div>
-              <div className="mt-3"><LoadBar value={o.load.load4wk} /></div>
-              {(o.overLeveled || o.rush || o.skillFit < 1) && (
+              {(o.overLeveled || o.rush || o.missing.length > 0 || o.overTarget) && (
                 <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
+                  {o.missing.length > 0 && <li className="text-red-600">Outside skill range: missing {o.missing.join(", ")}</li>}
+                  {o.overTarget && <li>{o.peak > 1 ? "Overloads" : "Pushes over target:"} {o.builder.name} peaks at {pct(o.peak)} against a {pct(o.builder.utilTarget)} target.</li>}
                   {o.overLeveled && <li>Over-leveled: billed at {scope.requiredTier} rate, costed at {o.builder.tier}. Margin takes the hit.</li>}
-                  {o.rush && <li>Misses the {scope.deadlineWeeks}-wk deadline. Needs reprioritization (+{usd(o.rushFee)} rush).</li>}
-                  {o.skillFit < 1 && <li>Missing: {scope.skills.filter((s) => !o.matched.includes(s)).join(", ")}</li>}
+                  {o.rush && <li>Can&apos;t hit the deadline at a sustainable pace; compressed to finish by it (+{usd(o.rushFee)} rush).</li>}
                 </ul>
               )}
             </div>
