@@ -2,7 +2,7 @@
 import { dayIndex, fmt, fromToday } from "./dates";
 import type { Scope } from "./scope-schema";
 import {
-  CONCURRENCY_SHARE, MATERIALS_MARKUP, PARTNER, PLANNING_WEEKS, ROSTER, RUSH_SURCHARGE, SPECIALISTS, TIER_ORDER, TIERS,
+  CONCURRENCY_SHARE, MATERIALS_MARKUP, PARTNER, REPEATABLE, PLANNING_WEEKS, ROSTER, RUSH_SURCHARGE, SPECIALISTS, TIER_ORDER, TIERS,
   TOUR_TECH, UTIL_TOLERANCE,
   BASELINE_SKILLS,
   type Builder, type Job, type Skill, type Tier,
@@ -156,7 +156,8 @@ export function rolloutPlan(scope: Scope, jobs: Job[]) {
   };
 
   let partner = null;
-  if (tier === "Junior") {
+  // Partners take repeatable work: stock or lightly modified stock, at Junior or Senior tier.
+  if (REPEATABLE.includes(scope.fulfillment) && tier !== "Master") {
     const qaHours = Math.max(1, Math.round(p.hours * PARTNER.qaShare));
     const qaBuilder = [...crew].sort((a, z) => builderLoad(a, jobs).util - builderLoad(z, jobs).util)[0];
     const subcontractCost = p.hours * PARTNER.costRate;
