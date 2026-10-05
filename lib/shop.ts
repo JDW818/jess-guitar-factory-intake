@@ -100,6 +100,7 @@ export type Job = {
   materialsCost: number;
   specialistsCost: number;
   subcontractCost?: number; // partner shop cost, when work is subcontracted
+  tourSupport?: { weeks: number; price: number; cost: number }; // recurring, after delivery
   needsReview: boolean;
   status: JobStatus;
   start: string; // planned start (YYYY-MM-DD)

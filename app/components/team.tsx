@@ -16,7 +16,7 @@ export function Team({ jobs }: { jobs: Job[] }) {
       <dl className="mb-4 grid grid-cols-3 gap-2 text-center">
         {[
           ["Utilization", `${pct(stats.utilization)}`, `target ${pct(stats.target)}`],
-          ["Booked", usd(stats.booked), "open work"],
+          ["Booked", usd(stats.booked), stats.recurring ? `incl. ${usd(stats.recurring)} tour` : "open work"],
           ["Margin", pct(stats.margin), "blended"],
         ].map(([k, v, sub]) => (
           <div key={k} className="rounded-lg bg-[var(--background)] p-2">
