@@ -22,7 +22,7 @@ export default function Shop() {
       </header>
 
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_22rem]">
-        <Intake jobs={jobs} onBook={(job) => setJobs([...jobs, job])} />
+        <Intake jobs={jobs} onBook={(booked) => setJobs([...jobs, ...booked])} />
         <div className="lg:sticky lg:top-6">
           <Team jobs={jobs} />
         </div>

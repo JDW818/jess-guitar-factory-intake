@@ -42,6 +42,27 @@ export const SPECIALISTS: Record<SpecialistKey, { label: string; price: number; 
   finish: { label: "Finish artist", price: 900, cost: 600 },
 };
 
+// How the instrument is fulfilled, lightest first. Not every job needs a builder.
+export const FULFILLMENT = ["in stock", "modified stock", "made to order", "fully custom"] as const;
+export type Fulfillment = (typeof FULFILLMENT)[number];
+
+// What kind of engagement the customer is buying.
+export const ENGAGEMENTS = ["one-off", "build+tech", "rollout"] as const;
+export type Engagement = (typeof ENGAGEMENTS)[number];
+export const ENGAGEMENT_LABELS: Record<Engagement, string> = {
+  "one-off": "One-off build",
+  "build+tech": "Build + tour tech",
+  rollout: "Rollout",
+};
+
+// A tech who travels with the customer after delivery, billed weekly.
+export const TOUR_TECH = { label: "Tour tech", weeklyPrice: 1800, weeklyCost: 1100 };
+
+// Certified partner shop for repeatable Junior-tier work. Costs more per hour
+// than an in-house Junior, but doesn't consume shop capacity. Every partner
+// unit gets an in-house QA pass.
+export const PARTNER = { name: "Hill Country Guitar Works", label: "Certified partner shop", costRate: 60, qaShare: 0.15 };
+
 export const MATERIALS_MARKUP = 0.3;
 export const RUSH_SURCHARGE = 0.25;
 export const PLANNING_WEEKS = 4; // near-term utilization horizon
@@ -78,6 +99,7 @@ export type Job = {
   price: number;
   materialsCost: number;
   specialistsCost: number;
+  subcontractCost?: number; // partner shop cost, when work is subcontracted
   needsReview: boolean;
   status: JobStatus;
   start: string; // planned start (YYYY-MM-DD)

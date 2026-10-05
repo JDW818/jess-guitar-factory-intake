@@ -2,8 +2,8 @@
 import { dayIndex, fmt, fromToday } from "./dates";
 import type { Scope } from "./scope-schema";
 import {
-  CONCURRENCY_SHARE, MATERIALS_MARKUP, PLANNING_WEEKS, ROSTER, RUSH_SURCHARGE, SPECIALISTS, TIER_ORDER, TIERS,
-  UTIL_TOLERANCE,
+  CONCURRENCY_SHARE, MATERIALS_MARKUP, PARTNER, PLANNING_WEEKS, ROSTER, RUSH_SURCHARGE, SPECIALISTS, TIER_ORDER, TIERS,
+  TOUR_TECH, UTIL_TOLERANCE,
   BASELINE_SKILLS,
   type Builder, type Job, type Skill, type Tier,
 } from "./shop";
@@ -22,7 +22,7 @@ function remainingHours(job: Job) {
 
 function jobCost(job: Job) {
   const b = ROSTER.find((r) => r.id === job.assigneeId)!;
-  return job.hours * TIERS[b.tier].costRate + job.materialsCost + job.specialistsCost;
+  return job.hours * TIERS[b.tier].costRate + job.materialsCost + job.specialistsCost + (job.subcontractCost ?? 0);
 }
 
 const margin = (price: number, cost: number) => (price > 0 ? (price - cost) / price : 0);
@@ -85,13 +85,81 @@ export function teamStats(jobs: Job[]) {
 // ── Pricing & staffing ──────────────────────────────────────────────────────
 
 export function priceScope(scope: Scope) {
-  const hours = scope.effort.reduce((s, e) => s + e.hours, 0);
-  const materialsCost = scope.materials.reduce((s, m) => s + m.cost, 0);
+  const qty = Math.max(1, Math.round(scope.quantity));
+  const unitHours = scope.effort.reduce((s, e) => s + e.hours, 0);
+  const hours = unitHours * qty;
+  const materialsCost = scope.materials.reduce((s, m) => s + m.cost, 0) * qty;
   const specialistsPrice = scope.specialists.reduce((s, x) => s + SPECIALISTS[x.type].price, 0);
   const specialistsCost = scope.specialists.reduce((s, x) => s + SPECIALISTS[x.type].cost, 0);
   const labor = hours * TIERS[scope.requiredTier].billRate; // customer pays for the tier the work needs
   const materials = Math.round(materialsCost * (1 + MATERIALS_MARKUP));
-  return { hours, labor, materials, materialsCost, specialistsPrice, specialistsCost };
+  return { qty, unitHours, hours, labor, materials, materialsCost, specialistsPrice, specialistsCost, price: labor + materials + specialistsPrice };
+}
+
+// Recurring line for build+tech engagements: a tech on the road, billed weekly.
+export function tourTech(scope: Scope) {
+  if (scope.engagement !== "build+tech" || !scope.tourTechWeeks) return null;
+  const weeks = Math.round(scope.tourTechWeeks);
+  const price = weeks * TOUR_TECH.weeklyPrice;
+  return { weeks, price, margin: margin(price, weeks * TOUR_TECH.weeklyCost) };
+}
+
+type DraftJob = Pick<Job, "assigneeId" | "hours" | "price" | "materialsCost" | "specialistsCost"> & Partial<Job>;
+
+// A not-yet-booked job, used to test plans against capacity and then to book them.
+export function draftJob(scope: Scope, j: DraftJob, startDay: number, endDay: number): Job {
+  return {
+    id: crypto.randomUUID(), title: scope.title, customer: scope.customer ?? "New customer",
+    tier: scope.requiredTier, skills: scope.skills, hoursDone: 0, needsReview: scope.needsReview,
+    status: "Scheduled", start: fromToday(startDay), end: fromToday(endDay),
+    due: scope.deadlineWeeks != null ? fromToday(Math.round(scope.deadlineWeeks * 7)) : null,
+    ...j,
+  };
+}
+
+export type RolloutPlan = ReturnType<typeof rolloutPlan>;
+
+// Rollouts: build every unit in-house across the crew at the required tier, or
+// hand the repeatable work to the partner shop with an in-house QA pass.
+// Customer price is the same either way; margin and capacity are what move.
+export function rolloutPlan(scope: Scope, jobs: Job[]) {
+  const p = priceScope(scope);
+  const tier = scope.requiredTier;
+  const days = Math.max(7, Math.round((scope.deadlineWeeks ?? PLANNING_WEEKS) * 7));
+  const crew = ROSTER.filter((b) => b.tier === tier);
+  const share = (n: number) => Math.round(n / crew.length);
+
+  const crewJobs = crew.map((b) =>
+    draftJob(scope, {
+      assigneeId: b.id, hours: share(p.hours), price: share(p.price),
+      materialsCost: share(p.materialsCost), specialistsCost: share(p.specialistsCost),
+      title: `${scope.title} · ${share(p.qty)} units`,
+    }, 0, days - 1),
+  );
+  const crewLoad = crew.map((b) => ({ builder: b, peak: builderLoad(b, [...jobs, ...crewJobs]).peak }));
+  const inHouseCost = p.hours * TIERS[tier].costRate + p.materialsCost + p.specialistsCost;
+  const inHouse = {
+    jobs: crewJobs, crew: crewLoad, cost: inHouseCost, margin: margin(p.price, inHouseCost),
+    overTarget: crewLoad.some((c) => c.peak > c.builder.utilTarget + UTIL_TOLERANCE),
+  };
+
+  let partner = null;
+  if (tier === "Junior") {
+    const qaHours = Math.max(1, Math.round(p.hours * PARTNER.qaShare));
+    const qaBuilder = [...crew].sort((a, z) => builderLoad(a, jobs).util - builderLoad(z, jobs).util)[0];
+    const subcontractCost = p.hours * PARTNER.costRate;
+    const job = draftJob(scope, {
+      assigneeId: qaBuilder.id, hours: qaHours, price: p.price, materialsCost: p.materialsCost,
+      specialistsCost: p.specialistsCost, subcontractCost, title: `${scope.title} · QA on partner build`,
+    }, 0, days - 1);
+    const cost = qaHours * TIERS[qaBuilder.tier].costRate + subcontractCost + p.materialsCost + p.specialistsCost;
+    partner = { job, qaHours, qaBuilder, qaPeak: builderLoad(qaBuilder, [...jobs, job]).peak, cost, margin: margin(p.price, cost) };
+  }
+
+  return {
+    units: p.qty, hours: p.hours, price: p.price, end: fromToday(days - 1), inHouse, partner,
+    recommended: partner && inHouse.overTarget ? ("partner" as const) : ("in-house" as const),
+  };
 }
 
 export type StaffingOption = ReturnType<typeof staffingOptions>[number];

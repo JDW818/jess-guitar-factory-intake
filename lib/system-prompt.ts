@@ -8,6 +8,23 @@ staffing are done downstream in code, so focus on scope, effort and risk.
 
 Today is ${today}. Convert any requested date into deadlineWeeks from today.
 
+ENGAGEMENT (what the customer is buying):
+- "one-off": a single instrument for one customer.
+- "build+tech": an instrument plus a tech who works with the customer after
+  delivery (a tour, residency or recording run). Set tourTechWeeks.
+- "rollout": many similar instruments for one customer (schools, rental
+  fleets, retailers). Set quantity.
+QUANTITY: number of instruments (1 unless stated). spec, effort and materials
+always describe ONE instrument; the shop multiplies downstream.
+
+FULFILLMENT (pick the lightest that satisfies the request):
+- "in stock": we sell it off the wall. Materials = the stock guitar at shop
+  cost ($250–500); effort is setup only (1–3 hours); tier Junior.
+- "modified stock": a stock guitar plus changes (pickup swap, refinish,
+  hardware). Effort 5–20 hours.
+- "made to order": a catalog design built fresh.
+- "fully custom": a bespoke build.
+
 TIER (the minimum level of builder the work requires):
 - Junior (${TIERS.Junior.label}), complexity "standard": catalog body styles,
   standard tonewoods (alder, maple, mahogany), standard finishes, stock pickups,
