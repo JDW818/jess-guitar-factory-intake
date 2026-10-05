@@ -4,13 +4,17 @@ import type { Scope } from "./scope-schema";
 import {
   CONCURRENCY_SHARE, MATERIALS_MARKUP, PLANNING_WEEKS, ROSTER, RUSH_SURCHARGE, SPECIALISTS, TIER_ORDER, TIERS,
   UTIL_TOLERANCE,
-  type Builder, type Job, type Tier,
+  BASELINE_SKILLS,
+  type Builder, type Job, type Skill, type Tier,
 } from "./shop";
 
 const tierRank = (t: Tier) => TIER_ORDER.indexOf(t);
 const active = (jobs: Job[]) => jobs.filter((j) => j.status !== "Delivered");
 const max = (xs: number[]) => xs.reduce((m, x) => Math.max(m, x), 0);
 const pctS = (n: number) => `${Math.round(n * 100)}%`;
+
+// Skills that actually differentiate builders for this job.
+export const distinguishingSkills = (skills: Skill[]) => skills.filter((s) => !BASELINE_SKILLS.includes(s));
 
 function remainingHours(job: Job) {
   return job.status === "Delivered" ? 0 : Math.max(0, job.hours - job.hoursDone);
@@ -120,8 +124,9 @@ export function staffingOptions(scope: Scope, jobs: Job[]) {
 
       const peak = peakWith(plan);
       const overTarget = peak > b.utilTarget + UTIL_TOLERANCE;
-      const missing = scope.skills.filter((s) => !b.skills.includes(s));
-      const skillFit = scope.skills.length ? 1 - missing.length / scope.skills.length : 1;
+      const needed = distinguishingSkills(scope.skills);
+      const missing = needed.filter((s) => !b.skills.includes(s));
+      const skillFit = needed.length ? 1 - missing.length / needed.length : 1;
       const rushFee = rush ? Math.round(p.labor * RUSH_SURCHARGE) : 0;
       const price = p.labor + p.materials + p.specialistsPrice + rushFee;
       const cost = p.hours * TIERS[b.tier].costRate + p.materialsCost + p.specialistsCost;
@@ -133,14 +138,14 @@ export function staffingOptions(scope: Scope, jobs: Job[]) {
         skillFit * 100 - (overTarget ? 20 : 0) - (peak > 1 ? 20 : 0) - (rush ? 8 : 0) - waitWeeks * 2 -
         (overLeveled ? 15 : 0) + m * 30 + (b.utilTarget - peak) * 10;
 
-      return { builder: b, start: plan.start, end: plan.end, peak, overTarget, missing, rush, rushFee, price, margin: m, overLeveled, score };
+      return { builder: b, start: plan.start, end: plan.end, peak, overTarget, missing, needed: needed.length, rush, rushFee, price, margin: m, overLeveled, score };
     })
     .sort((a, z) => z.score - a.score);
 }
 
-export function whyRecommended(o: StaffingOption, scope: Scope) {
+export function whyRecommended(o: StaffingOption) {
   return [
-    o.missing.length ? `${scope.skills.length - o.missing.length}/${scope.skills.length} skills` : "full skill match",
+    o.missing.length ? `${o.needed - o.missing.length}/${o.needed} key skills` : "full skill match",
     o.overLeveled ? "over-leveled" : "right tier",
     `peaks at ${pctS(o.peak)} of a ${pctS(o.builder.utilTarget)} target`,
     dayIndex(o.start) > 0 ? `starts ${fmt(o.start)}` : "can start now",
