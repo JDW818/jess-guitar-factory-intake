@@ -27,6 +27,9 @@ export const SKILLS = [
 ] as const;
 export type Skill = (typeof SKILLS)[number];
 
+// Core shop skills every builder has; never a reason to pick one builder over another.
+export const BASELINE_SKILLS: Skill[] = ["solid-body", "electronics", "setup"];
+
 export const PHASES = ["design", "woodwork", "finish", "electronics", "setup"] as const;
 
 export const SPECIALIST_KEYS = ["amp", "pedals", "pickups", "setup", "finish"] as const;

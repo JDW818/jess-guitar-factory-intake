@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { fmt, fromToday } from "@/lib/dates";
-import { priceScope, staffingOptions, utilLevel, whyRecommended, type StaffingOption } from "@/lib/engine";
+import { distinguishingSkills, priceScope, staffingOptions, utilLevel, whyRecommended, type StaffingOption } from "@/lib/engine";
 import type { Scope } from "@/lib/scope-schema";
 import { SPECIALISTS, TIERS, type Job } from "@/lib/shop";
 import { Card, TierBadge, UTIL_TEXT, marginColor, pct, usd } from "./ui";
@@ -123,7 +123,7 @@ function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]
           </p>
           <p className="mt-3 text-sm leading-relaxed">{scope.tierRationale}</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {scope.skills.map((s) => (
+            {distinguishingSkills(scope.skills).map((s) => (
               <span key={s} className="rounded-md bg-[var(--line)] px-2 py-0.5 text-xs">{s}</span>
             ))}
           </div>
@@ -162,7 +162,7 @@ function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]
                     <TierBadge tier={o.builder.tier} />
                     {o === best && <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Best fit</span>}
                   </div>
-                  <p className="mt-0.5 text-xs text-[var(--muted)]">{whyRecommended(o, scope)}</p>
+                  <p className="mt-0.5 text-xs text-[var(--muted)]">{whyRecommended(o)}</p>
                 </div>
                 <Stat k="Dates" v={`${fmt(o.start)} – ${fmt(o.end)}`} warn={o.rush} />
                 <Stat k="Peak util" v={`${pct(o.peak)} / ${pct(o.builder.utilTarget)}`} cls={UTIL_TEXT[utilLevel(o.peak, o.builder.utilTarget)]} />
