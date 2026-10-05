@@ -11,7 +11,6 @@ import {
 const tierRank = (t: Tier) => TIER_ORDER.indexOf(t);
 const active = (jobs: Job[]) => jobs.filter((j) => j.status !== "Delivered");
 const max = (xs: number[]) => xs.reduce((m, x) => Math.max(m, x), 0);
-const pctS = (n: number) => `${Math.round(n * 100)}%`;
 
 // Skills that actually differentiate builders for this job.
 export const distinguishingSkills = (skills: Skill[]) => skills.filter((s) => !BASELINE_SKILLS.includes(s));
@@ -22,7 +21,7 @@ function remainingHours(job: Job) {
 
 function jobCost(job: Job) {
   const b = ROSTER.find((r) => r.id === job.assigneeId)!;
-  return job.hours * TIERS[b.tier].costRate + job.materialsCost + job.specialistsCost + (job.subcontractCost ?? 0);
+  return job.hours * TIERS[b.tier].costRate + job.materialsCost + job.specialistsCost + (job.subcontractCost ?? 0) + (job.tourSupport?.cost ?? 0);
 }
 
 const margin = (price: number, cost: number) => (price > 0 ? (price - cost) / price : 0);
@@ -69,12 +68,24 @@ export function builderLoad(b: Builder, jobs: Job[]) {
   };
 }
 
+// One utilization measure everywhere: average load over the planning horizon,
+// before and after adding work. The busiest week is only surfaced past 100%.
+export function loadChange(b: Builder, jobs: Job[], added: Job[]) {
+  const after = builderLoad(b, [...jobs, ...added]);
+  return { before: builderLoad(b, jobs).util, after: after.util, peak: after.peak };
+}
+
+export const isOverTarget = (b: Builder, l: { after: number; peak: number }) =>
+  l.after > b.utilTarget + UTIL_TOLERANCE || l.peak > 1;
+
 export function teamStats(jobs: Job[]) {
   const open = active(jobs);
   const hrs = (b: Builder) => b.weeklyHours;
   const total = ROSTER.reduce((s, b) => s + hrs(b), 0);
-  const revenue = open.reduce((s, j) => s + j.price, 0);
+  const recurring = open.reduce((s, j) => s + (j.tourSupport?.price ?? 0), 0);
+  const revenue = open.reduce((s, j) => s + j.price, 0) + recurring;
   return {
+    recurring,
     utilization: ROSTER.reduce((s, b) => s + builderLoad(b, jobs).util * hrs(b), 0) / total,
     target: ROSTER.reduce((s, b) => s + b.utilTarget * hrs(b), 0) / total,
     booked: revenue,
@@ -101,7 +112,8 @@ export function tourTech(scope: Scope) {
   if (scope.engagement !== "build+tech" || !scope.tourTechWeeks) return null;
   const weeks = Math.round(scope.tourTechWeeks);
   const price = weeks * TOUR_TECH.weeklyPrice;
-  return { weeks, price, margin: margin(price, weeks * TOUR_TECH.weeklyCost) };
+  const cost = weeks * TOUR_TECH.weeklyCost;
+  return { weeks, price, cost, margin: margin(price, cost) };
 }
 
 type DraftJob = Pick<Job, "assigneeId" | "hours" | "price" | "materialsCost" | "specialistsCost"> & Partial<Job>;
@@ -136,11 +148,11 @@ export function rolloutPlan(scope: Scope, jobs: Job[]) {
       title: `${scope.title} · ${share(p.qty)} units`,
     }, 0, days - 1),
   );
-  const crewLoad = crew.map((b) => ({ builder: b, peak: builderLoad(b, [...jobs, ...crewJobs]).peak }));
+  const crewLoad = crew.map((b) => ({ builder: b, load: loadChange(b, jobs, crewJobs) }));
   const inHouseCost = p.hours * TIERS[tier].costRate + p.materialsCost + p.specialistsCost;
   const inHouse = {
     jobs: crewJobs, crew: crewLoad, cost: inHouseCost, margin: margin(p.price, inHouseCost),
-    overTarget: crewLoad.some((c) => c.peak > c.builder.utilTarget + UTIL_TOLERANCE),
+    overTarget: crewLoad.some((c) => isOverTarget(c.builder, c.load)),
   };
 
   let partner = null;
@@ -153,7 +165,7 @@ export function rolloutPlan(scope: Scope, jobs: Job[]) {
       specialistsCost: p.specialistsCost, subcontractCost, title: `${scope.title} · QA on partner build`,
     }, 0, days - 1);
     const cost = qaHours * TIERS[qaBuilder.tier].costRate + subcontractCost + p.materialsCost + p.specialistsCost;
-    partner = { job, qaHours, qaBuilder, qaPeak: builderLoad(qaBuilder, [...jobs, job]).peak, cost, margin: margin(p.price, cost) };
+    partner = { job, qaHours, qaBuilder, qaLoad: loadChange(qaBuilder, jobs, [job]), cost, margin: margin(p.price, cost) };
   }
 
   return {
@@ -180,18 +192,20 @@ export function staffingOptions(scope: Scope, jobs: Job[]) {
         assigneeId: b.id, hours: p.hours, hoursDone: 0, price: 0, materialsCost: 0, specialistsCost: 0,
         needsReview: false, status: "Scheduled", start: fromToday(startDay), end: fromToday(endDay), due: deadline,
       });
-      const peakWith = (job: Job) => builderLoad(b, [...jobs, job]).peak;
+      const fits = (job: Job) => !isOverTarget(b, loadChange(b, jobs, [job]));
 
+      // Earliest weekly start that keeps them within target.
       let plan = probe(0, dur - 1);
-      for (let s = 7; s <= 56 && peakWith(plan) > b.utilTarget + UTIL_TOLERANCE; s += 7) plan = probe(s, s + dur - 1);
-      if (peakWith(plan) > b.utilTarget + UTIL_TOLERANCE) plan = probe(0, dur - 1); // nothing fits: start now, show the overload
+      for (let s = 7; s <= 56 && !fits(plan); s += 7) plan = probe(s, s + dur - 1);
+      if (!fits(plan)) plan = probe(0, dur - 1); // nothing fits: start now, show the overload
 
       // Can't make the deadline at a sustainable pace: compress into it and charge rush.
       const rush = deadline != null && plan.end > deadline;
       if (rush) plan = probe(0, Math.max(6, dayIndex(deadline!)));
 
-      const peak = peakWith(plan);
-      const overTarget = peak > b.utilTarget + UTIL_TOLERANCE;
+      const load = loadChange(b, jobs, [plan]);
+      const overTarget = isOverTarget(b, load);
+      const overloaded = load.peak > 1;
       const needed = distinguishingSkills(scope.skills);
       const missing = needed.filter((s) => !b.skills.includes(s));
       const skillFit = needed.length ? 1 - missing.length / needed.length : 1;
@@ -203,10 +217,10 @@ export function staffingOptions(scope: Scope, jobs: Job[]) {
       const waitWeeks = dayIndex(plan.start) / 7;
 
       const score =
-        skillFit * 100 - (overTarget ? 20 : 0) - (peak > 1 ? 20 : 0) - (rush ? 8 : 0) - waitWeeks * 2 -
-        (overLeveled ? 15 : 0) + m * 30 + (b.utilTarget - peak) * 10;
+        skillFit * 100 - (overTarget ? 20 : 0) - (overloaded ? 20 : 0) - (rush ? 8 : 0) - waitWeeks * 2 -
+        (overLeveled ? 15 : 0) + m * 30 + (b.utilTarget - load.after) * 10;
 
-      return { builder: b, start: plan.start, end: plan.end, peak, overTarget, missing, needed: needed.length, rush, rushFee, price, margin: m, overLeveled, score };
+      return { builder: b, start: plan.start, end: plan.end, load, overTarget, overloaded, missing, needed: needed.length, rush, rushFee, price, margin: m, overLeveled, score };
     })
     .sort((a, z) => z.score - a.score);
 }
@@ -215,7 +229,6 @@ export function whyRecommended(o: StaffingOption) {
   return [
     o.missing.length ? `${o.needed - o.missing.length}/${o.needed} key skills` : "full skill match",
     o.overLeveled ? "over-leveled" : "right tier",
-    `peaks at ${pctS(o.peak)} of a ${pctS(o.builder.utilTarget)} target`,
-    dayIndex(o.start) > 0 ? `starts ${fmt(o.start)}` : "can start now",
+    dayIndex(o.start) > 0 ? `free to start ${fmt(o.start)}` : "can start now",
   ].join(" · ");
 }
