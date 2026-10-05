@@ -12,7 +12,7 @@ import { Card, TierBadge, UTIL_TEXT, marginColor, pct, usd } from "./ui";
 
 const EXAMPLES: [string, string][] = [
   ["Jazz trio, LH", "From Blue Line Jazz Trio: we need a left-handed semi-hollow for our guitarist, flame maple top, humbuckers, amber burst. Mid-tier budget. Gigging by early November."],
-  ["Grimhold tour", "Grimhold again: baritone 7-string, Brazilian rosewood board, abalone inlays, active pickups. Tour starts in 5 weeks and runs 6 weeks, and they want a tech on the road with them to keep the rig dialed in."],
+  ["Saves the Day tour", "Saves the Day again: baritone 7-string, Brazilian rosewood board, abalone inlays, active pickups. Tour starts in 5 weeks and runs 6 weeks, and they want a tech on the road with them to keep the rig dialed in."],
   ["School district", "Austin ISD music program: 40 student guitars for the spring semester. Strat-style and stock specs are fine, but refinished in school colors (maroon, white pickguard) with the district crest engraved on the neck plate, all set up and ready to play. Need them in 6 weeks."],
 ];
 

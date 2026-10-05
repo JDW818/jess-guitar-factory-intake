@@ -50,7 +50,7 @@ const JAZZ: Scope = {
 
 const TOUR: Scope = {
   title: "Baritone 7, Brazilian rosewood, abalone inlays",
-  customer: "Grimhold",
+  customer: "Saves the Day",
   engagement: "build+tech",
   engagementRationale: "A custom build plus a tech on the road for the six-week tour.",
   quantity: 1,
