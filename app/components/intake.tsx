@@ -2,18 +2,21 @@
 
 import { useState } from "react";
 import { fmt, fromToday } from "@/lib/dates";
-import { distinguishingSkills, priceScope, staffingOptions, utilLevel, whyRecommended, type StaffingOption } from "@/lib/engine";
+import {
+  distinguishingSkills, draftJob, priceScope, rolloutPlan, staffingOptions, tourTech, utilLevel, whyRecommended,
+  type RolloutPlan, type StaffingOption,
+} from "@/lib/engine";
 import type { Scope } from "@/lib/scope-schema";
-import { SPECIALISTS, TIERS, type Job } from "@/lib/shop";
+import { ENGAGEMENT_LABELS, FULFILLMENT, PARTNER, SPECIALISTS, TIERS, TOUR_TECH, type Fulfillment, type Job } from "@/lib/shop";
 import { Card, TierBadge, UTIL_TEXT, marginColor, pct, usd } from "./ui";
 
 const EXAMPLES: [string, string][] = [
   ["Jazz trio, LH", "From Blue Line Jazz Trio: we need a left-handed semi-hollow for our guitarist, flame maple top, humbuckers, amber burst. Mid-tier budget. Gigging by early November."],
-  ["Beginner", "Austin Music Academy wants another Strat-style guitar for the student program, sunburst, stock everything. No rush."],
-  ["Metal rush job", "Grimhold again: baritone 7-string, Brazilian rosewood board, abalone inlays, active pickups. Tour starts in 5 weeks."],
+  ["Grimhold tour", "Grimhold again: baritone 7-string, Brazilian rosewood board, abalone inlays, active pickups. Tour starts in 5 weeks and runs 6 weeks, and they want a tech on the road with them to keep the rig dialed in."],
+  ["School district", "Austin ISD music program: 40 student guitars for the spring semester. Strat-style and stock specs are fine, but refinished in school colors (maroon, white pickguard) with the district crest engraved on the neck plate, all set up and ready to play. Need them in 6 weeks."],
 ];
 
-export function Intake({ jobs, onBook }: { jobs: Job[]; onBook: (job: Job) => void }) {
+export function Intake({ jobs, onBook }: { jobs: Job[]; onBook: (jobs: Job[]) => void }) {
   const [text, setText] = useState("");
   const [scope, setScope] = useState<Scope | null>(null);
   const [model, setModel] = useState("");
@@ -41,29 +44,23 @@ export function Intake({ jobs, onBook }: { jobs: Job[]; onBook: (job: Job) => vo
     }
   }
 
-  function book(opt: StaffingOption) {
-    if (!scope) return;
-    const p = priceScope(scope);
-    onBook({
-      id: crypto.randomUUID(),
-      title: scope.title,
-      customer: scope.customer ?? "New customer",
-      tier: scope.requiredTier,
-      skills: scope.skills,
-      assigneeId: opt.builder.id,
-      hours: p.hours,
-      hoursDone: 0,
-      price: opt.price,
-      materialsCost: p.materialsCost,
-      specialistsCost: p.specialistsCost,
-      needsReview: scope.needsReview,
-      status: "Scheduled",
-      start: opt.start,
-      end: opt.end,
-      due: scope.deadlineWeeks != null ? fromToday(scope.deadlineWeeks * 7) : null,
-    });
+  function book(booked: Job[]) {
+    onBook(booked);
     setScope(null);
     setText("");
+  }
+
+  function bookBuilder(opt: StaffingOption) {
+    if (!scope) return;
+    const p = priceScope(scope);
+    book([{
+      ...draftJob(scope, {
+        assigneeId: opt.builder.id, hours: p.hours, price: opt.price,
+        materialsCost: p.materialsCost, specialistsCost: p.specialistsCost,
+      }, 0, 0),
+      start: opt.start,
+      end: opt.end,
+    }]);
   }
 
   return (
@@ -93,15 +90,17 @@ export function Intake({ jobs, onBook }: { jobs: Job[]; onBook: (job: Job) => vo
       </Card>
 
       {error && <p className="rounded-xl bg-red-100 p-4 text-red-900">{error}</p>}
-      {scope && <ScopeResult scope={scope} jobs={jobs} model={model} onBook={book} />}
+      {scope && <ScopeResult scope={scope} jobs={jobs} model={model} onBookBuilder={bookBuilder} onBookJobs={book} />}
     </div>
   );
 }
 
-function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]; model: string; onBook: (o: StaffingOption) => void }) {
+type ResultProps = { scope: Scope; jobs: Job[]; model: string; onBookBuilder: (o: StaffingOption) => void; onBookJobs: (j: Job[]) => void };
+
+function ScopeResult({ scope, jobs, model, onBookBuilder, onBookJobs }: ResultProps) {
   const p = priceScope(scope);
-  const options = staffingOptions(scope, jobs).slice(0, 3);
-  const best = options[0];
+  const tech = tourTech(scope);
+  const rollout = scope.engagement === "rollout";
 
   return (
     <div className="space-y-5">
@@ -118,9 +117,16 @@ function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]
             <TierBadge tier={scope.requiredTier} />
           </div>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            {scope.customer ?? "New customer"} · {scope.complexity} · ≈ {TIERS[scope.requiredTier].services}
+            {scope.customer ?? "New customer"} · {scope.complexity}
             {scope.deadlineWeeks != null && ` · due ${fmt(fromToday(scope.deadlineWeeks * 7))}`}
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-full bg-[var(--accent)] px-2.5 py-0.5 font-semibold text-white">
+              {ENGAGEMENT_LABELS[scope.engagement]}{p.qty > 1 && ` · ${p.qty} units`}
+            </span>
+            <span className="text-[var(--muted)]">{scope.engagementRationale}</span>
+          </div>
+          <FulfillmentStrip value={scope.fulfillment} />
           <p className="mt-3 text-sm leading-relaxed">{scope.tierRationale}</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {distinguishingSkills(scope.skills).map((s) => (
@@ -129,13 +135,13 @@ function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]
           </div>
         </Card>
 
-        <Card title={`Effort · ${p.hours} hrs`}>
+        <Card title={p.qty > 1 ? `Effort · ${p.unitHours} hrs/unit × ${p.qty} = ${p.hours} hrs` : `Effort · ${p.hours} hrs`}>
           <ul className="space-y-1.5 text-sm">
             {scope.effort.map((e) => (
               <li key={e.phase} className="flex items-center gap-3">
                 <span className="w-24 capitalize text-[var(--muted)]">{e.phase}</span>
                 <div className="h-2 flex-1 rounded-full bg-[var(--line)]">
-                  <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${(e.hours / p.hours) * 100}%` }} />
+                  <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${(e.hours / p.unitHours) * 100}%` }} />
                 </div>
                 <span className="w-12 text-right font-mono">{e.hours}h</span>
               </li>
@@ -143,14 +149,46 @@ function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]
           </ul>
           <div className="mt-4 space-y-1 border-t border-[var(--line)] pt-3 text-sm">
             <Row k={`Labor (${p.hours}h × ${usd(TIERS[scope.requiredTier].billRate)})`} v={usd(p.labor)} />
-            <Row k={`Materials (${scope.materials.length} items, +30%)`} v={usd(p.materials)} />
+            <Row k={`Materials (${scope.materials.length} item${scope.materials.length > 1 ? "s" : ""}${p.qty > 1 ? ` × ${p.qty}` : ""}, +30%)`} v={usd(p.materials)} />
             {scope.specialists.map((s) => (
               <Row key={s.type} k={SPECIALISTS[s.type].label} v={usd(SPECIALISTS[s.type].price)} hint={s.reason} />
             ))}
+            <div className="flex justify-between gap-4 border-t border-[var(--line)] pt-1.5 font-semibold">
+              <span>Build subtotal</span><span className="font-mono">{usd(p.price)}</span>
+            </div>
+            {tech && (
+              <div className="flex justify-between gap-4 font-semibold text-[var(--accent)]">
+                <span>{TOUR_TECH.label}: {tech.weeks} wks × {usd(TOUR_TECH.weeklyPrice)} <span className="font-normal">(recurring)</span></span>
+                <span className="font-mono">{usd(tech.price)}</span>
+              </div>
+            )}
           </div>
         </Card>
       </div>
 
+      {rollout ? (
+        <RolloutCard plan={rolloutPlan(scope, jobs)} onBook={onBookJobs} />
+      ) : (
+        <Staffing scope={scope} jobs={jobs} onBook={onBookBuilder} />
+      )}
+
+      {scope.risks.length > 0 && (
+        <Card title="Risks & assumptions" tone="warn">
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {scope.risks.map((r, i) => <li key={i}>{r}</li>)}
+          </ul>
+        </Card>
+      )}
+
+      <p className="text-center text-xs text-[var(--muted)]">{model === "mock" ? "Mock scoping (SCOPING_MOCK=1)" : `Scoped by ${model} via Vercel AI Gateway`} · priced and staffed in code</p>
+    </div>
+  );
+}
+
+function Staffing({ scope, jobs, onBook }: { scope: Scope; jobs: Job[]; onBook: (o: StaffingOption) => void }) {
+  const options = staffingOptions(scope, jobs).slice(0, 3);
+  const best = options[0];
+  return (
       <Card title="Who should build it" action={<span className="text-xs text-[var(--muted)]">top 3 · skill fit, capacity vs target, margin</span>}>
         <div className="space-y-3">
           {options.map((o) => (
@@ -184,16 +222,91 @@ function ScopeResult({ scope, jobs, model, onBook }: { scope: Scope; jobs: Job[]
           ))}
         </div>
       </Card>
+  );
+}
 
-      {scope.risks.length > 0 && (
-        <Card title="Risks & assumptions" tone="warn">
-          <ul className="list-disc space-y-1 pl-5 text-sm">
-            {scope.risks.map((r, i) => <li key={i}>{r}</li>)}
+const FULFILLMENT_NOTES: Record<Fulfillment, string> = {
+  "in stock": "Off the wall: set up and ship",
+  "modified stock": "Stock guitar, changed",
+  "made to order": "Catalog design, built fresh",
+  "fully custom": "Bespoke build",
+};
+
+function FulfillmentStrip({ value }: { value: Fulfillment }) {
+  const at = FULFILLMENT.indexOf(value);
+  return (
+    <div className="mt-3">
+      <div className="grid grid-cols-4 gap-1">
+        {FULFILLMENT.map((f, i) => (
+          <div key={f} className={`rounded-md px-1.5 py-1 text-center text-[11px] font-medium ${i === at ? "bg-[var(--foreground)] text-[var(--background)]" : i < at ? "bg-[var(--line)] text-[var(--muted)]" : "border border-dashed border-[var(--line)] text-[var(--muted)]"}`}>
+            {f}
+          </div>
+        ))}
+      </div>
+      <p className="mt-1 text-xs text-[var(--muted)]">Fulfillment: {FULFILLMENT_NOTES[value]}</p>
+    </div>
+  );
+}
+
+function RolloutCard({ plan, onBook }: { plan: RolloutPlan; onBook: (j: Job[]) => void }) {
+  const { inHouse, partner } = plan;
+  return (
+    <Card title={`Who delivers it · ${plan.units} units by ${fmt(plan.end)}`} action={<span className="text-xs text-[var(--muted)]">same price to the customer · margin vs capacity</span>}>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Option
+          title="Build in-house"
+          recommended={plan.recommended === "in-house"}
+          margin={inHouse.margin}
+          onBook={() => onBook(inHouse.jobs)}
+        >
+          <p>{plan.hours}h split across the crew:</p>
+          <ul className="mt-1 space-y-0.5">
+            {inHouse.crew.map((c) => (
+              <li key={c.builder.id} className="flex justify-between">
+                <span>{c.builder.name}</span>
+                <span className={`font-mono ${UTIL_TEXT[utilLevel(c.peak, c.builder.utilTarget)]}`}>peaks {pct(c.peak)} / {pct(c.builder.utilTarget)}</span>
+              </li>
+            ))}
           </ul>
-        </Card>
-      )}
+          {inHouse.overTarget && <p className="mt-1 text-amber-700">Pushes the crew over target. Bespoke work queues behind it.</p>}
+        </Option>
 
-      <p className="text-center text-xs text-[var(--muted)]">{model === "mock" ? "Mock scoping (SCOPING_MOCK=1)" : `Scoped by ${model} via Vercel AI Gateway`} · priced and staffed in code</p>
+        {partner ? (
+          <Option
+            title={`${PARTNER.label}`}
+            recommended={plan.recommended === "partner"}
+            margin={partner.margin}
+            onBook={() => onBook([partner.job])}
+          >
+            <p>{PARTNER.name} builds and sets up all {plan.units} units.</p>
+            <p className="mt-1 flex justify-between">
+              <span>{partner.qaBuilder.name} QA ({partner.qaHours}h)</span>
+              <span className={`font-mono ${UTIL_TEXT[utilLevel(partner.qaPeak, partner.qaBuilder.utilTarget)]}`}>peaks {pct(partner.qaPeak)} / {pct(partner.qaBuilder.utilTarget)}</span>
+            </p>
+            <p className="mt-1 text-[var(--muted)]">Thinner margin; the shop keeps its capacity for custom work.</p>
+          </Option>
+        ) : (
+          <div className="rounded-xl border border-dashed border-[var(--line)] p-4 text-xs text-[var(--muted)]">
+            {PARTNER.label} only takes repeatable Junior-tier work. This rollout stays in-house.
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function Option({ title, recommended, margin, onBook, children }: { title: string; recommended: boolean; margin: number; onBook: () => void; children: React.ReactNode }) {
+  return (
+    <div className={`flex flex-col rounded-xl border p-4 ${recommended ? "border-[var(--accent)] bg-[var(--background)]" : "border-[var(--line)]"}`}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-semibold">{title}</span>
+        {recommended && <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Recommended</span>}
+        <span className={`ml-auto whitespace-nowrap font-mono text-sm font-semibold ${marginColor(margin)}`}>{pct(margin)} margin</span>
+      </div>
+      <div className="mt-2 flex-1 text-xs">{children}</div>
+      <button onClick={onBook} className="mt-3 self-start rounded-lg border border-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white">
+        Book
+      </button>
     </div>
   );
 }

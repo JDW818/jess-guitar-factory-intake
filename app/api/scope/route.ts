@@ -1,5 +1,5 @@
 import { generateText, Output } from "ai";
-import { MOCK_SCOPE } from "@/lib/mock-scope";
+import { mockScope } from "@/lib/mock-scope";
 import { scopeSchema } from "@/lib/scope-schema";
 import { systemPrompt } from "@/lib/system-prompt";
 
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   }
 
   if (process.env.SCOPING_MOCK === "1") {
-    return Response.json({ scope: MOCK_SCOPE, model: "mock" });
+    return Response.json({ scope: mockScope(text), model: "mock" });
   }
 
   try {

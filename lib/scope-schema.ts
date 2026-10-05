@@ -1,9 +1,14 @@
 import { z } from "zod";
-import { PHASES, SKILLS, SPECIALIST_KEYS, TIER_ORDER } from "./shop";
+import { ENGAGEMENTS, FULFILLMENT, PHASES, SKILLS, SPECIALIST_KEYS, TIER_ORDER } from "./shop";
 
 export const scopeSchema = z.object({
   title: z.string().describe("Short internal job name, e.g. 'LH semi-hollow, flame maple'"),
   customer: z.string().nullable().describe("Customer name if given"),
+  engagement: z.enum(ENGAGEMENTS),
+  engagementRationale: z.string().describe("One sentence: why this engagement shape"),
+  quantity: z.number().describe("Number of instruments; spec, effort and materials describe ONE"),
+  fulfillment: z.enum(FULFILLMENT),
+  tourTechWeeks: z.number().nullable().describe("Weeks of on-the-road tech support for build+tech, else null"),
   spec: z.object({
     bodyStyle: z.string(),
     handedness: z.enum(["right", "left"]),

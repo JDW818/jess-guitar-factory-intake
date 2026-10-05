@@ -10,6 +10,18 @@ A custom guitar shop's intake desk: paste a customer request, and it scopes the 
 
 Book a job and the team panel updates live.
 
+### Engagement shapes
+
+The model also classifies what the customer is buying, and code picks the delivery model:
+
+| Shape | Example | Delivery |
+| --- | --- | --- |
+| One-off build | Jazz trio's custom semi-hollow | Best-fit builder, ranked on skills and capacity |
+| Build + tour tech | Grimhold's tour rig | Build plus a weekly tour-tech line (recurring revenue) |
+| Rollout | 40 school guitars | In-house crew vs. certified partner shop with in-house QA: same price, margin vs. capacity |
+
+Fulfillment runs from in stock → modified stock → made to order → fully custom; not every job needs a builder.
+
 ## Code map
 
 | File | What |
