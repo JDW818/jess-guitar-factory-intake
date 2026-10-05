@@ -305,7 +305,7 @@ function RolloutCard({ plan, onBook }: { plan: RolloutPlan; onBook: (j: Job[]) =
           </Option>
         ) : (
           <div className="rounded-xl border border-dashed border-[var(--line)] p-4 text-xs text-[var(--muted)]">
-            {PARTNER.label} only takes repeatable Junior-tier work. This rollout stays in-house.
+            {PARTNER.label} only takes repeatable work (stock or modified stock). This rollout stays in-house.
           </div>
         )}
       </div>

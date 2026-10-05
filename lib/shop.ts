@@ -46,6 +46,18 @@ export const SPECIALISTS: Record<SpecialistKey, { label: string; price: number; 
 export const FULFILLMENT = ["in stock", "modified stock", "made to order", "fully custom"] as const;
 export type Fulfillment = (typeof FULFILLMENT)[number];
 
+// What's on the wall. Only these can be sold "in stock" or "modified stock".
+// All right-handed, stock pickups, standard tonewoods.
+export const STOCK_WALL = [
+  "Strat-style solid-body: sunburst, black, olympic white",
+  "Tele-style solid-body: butterscotch, black",
+  "335-style semi-hollow: cherry, sunburst",
+  "7-string solid-body (standard scale): black",
+];
+
+// Fulfillment light enough to hand to a partner shop.
+export const REPEATABLE: Fulfillment[] = ["in stock", "modified stock"];
+
 // What kind of engagement the customer is buying.
 export const ENGAGEMENTS = ["one-off", "build+tech", "rollout"] as const;
 export type Engagement = (typeof ENGAGEMENTS)[number];
@@ -58,9 +70,9 @@ export const ENGAGEMENT_LABELS: Record<Engagement, string> = {
 // A tech who travels with the customer after delivery, billed weekly.
 export const TOUR_TECH = { label: "Tour tech", weeklyPrice: 1800, weeklyCost: 1100 };
 
-// Certified partner shop for repeatable Junior-tier work. Costs more per hour
-// than an in-house Junior, but doesn't consume shop capacity. Every partner
-// unit gets an in-house QA pass.
+// Certified partner shop for repeatable work (stock or modified stock). Costs
+// more per hour than an in-house Junior, but doesn't consume shop capacity.
+// Every partner unit gets an in-house QA pass.
 export const PARTNER = { name: "Hill Country Guitar Works", label: "Certified partner shop", costRate: 60, qaShare: 0.15 };
 
 export const MATERIALS_MARKUP = 0.3;
